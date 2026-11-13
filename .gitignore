@@ -10,6 +10,11 @@ venv/
 # 编辑器配置
 .vscode/
 
+# pytest 运行产物（每次跑测试都会生成，不该入库）
+.pytest_cache/
+pytest-of-*/
+.pytest-of-*/
+
 # 运行时数据：账本是用户数据，不应该进仓库
 # 别人 clone 下来运行，程序会自动创建一个空账本
 data.json
