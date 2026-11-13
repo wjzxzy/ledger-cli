@@ -2,6 +2,11 @@
 __pycache__/
 *.pyc
 
+# 虚拟环境：体积大（上百 MB），而且是本机专用的，绝不能入库
+# 别人 clone 后用 `python -m venv .venv` 自己建一份
+.venv/
+venv/
+
 # 编辑器配置
 .vscode/
 
