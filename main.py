@@ -53,7 +53,26 @@ def add_record(records):
 
     save_data(records)      # 立刻存盘，不等退出
     print(f"[已记录] {d}  {category}  {amount:.2f} 元")
+def delete_last(records):
+    """删除最后一笔"""
+    print("\n--- 删除最后一笔 ---")
 
+    if not records:                          # 空账本不能删
+        print("（账本是空的，没有可删除的记录）")
+        return
+
+    last = records[-1]                       # 取最后一条给它看
+    print(f"最后一条：{last['date']}  {last['category']}  "
+          f"{last['amount']:.2f} 元  {last['note']}")
+
+    confirm = input("确认删除？(y/n)：").strip().lower()
+    if confirm != "y":
+        print("已取消")
+        return
+
+    records.pop()                            # 删最后一个
+    save_data(records)                       # 立刻存盘
+    print("[已删除]")
 
 # ============================================================
 # 第二部分：菜单与主循环
@@ -64,6 +83,7 @@ MENU = """
   1. 添加一笔
   2. 查看全部
   3. 查看统计
+  4. 删除最后一笔
   0. 退出
 =========================="""
 
@@ -83,12 +103,12 @@ def main():
             show_all(records)
         elif choice == "3":
             show_stats(records)
+        elif choice == "4":
+            delete_last(records)
         elif choice == "0":
             print("再见！")
             break
         else:
-            print("无效选项，请输入 0-3 的数字")
-
-
+            print("无效选项，请输入 0-4 的数字")
 if __name__ == "__main__":
     main()
