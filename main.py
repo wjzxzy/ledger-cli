@@ -74,6 +74,26 @@ def delete_last(records):
     save_data(records)                       # 立刻存盘
     print("[已删除]")
 
+def show_by_category(records):
+    """按类别筛选查看"""
+    print("\n--- 按类别筛选 ---")
+    if not records:
+        print("（还没有任何记录）")
+        return
+
+    category = ask_category()          # ← 复用 inputs.py 里现成的
+
+    filtered = []                      # 造一个新列表，不动原数据
+    for r in records:
+        if r["category"] == category:
+            filtered.append(r)
+
+    if not filtered:
+        print(f"（没有「{category}」类别的记录）")
+        return
+
+    show_all(filtered)                 # ← 复用 report.py 里现成的
+
 # ============================================================
 # 第二部分：菜单与主循环
 # ============================================================
@@ -84,6 +104,7 @@ MENU = """
   2. 查看全部
   3. 查看统计
   4. 删除最后一笔
+  5. 按类别筛选
   0. 退出
 =========================="""
 
@@ -105,10 +126,12 @@ def main():
             show_stats(records)
         elif choice == "4":
             delete_last(records)
+        elif choice == "5":
+            show_by_category(records)
         elif choice == "0":
             print("再见！")
             break
         else:
-            print("无效选项，请输入 0-4 的数字")
+            print("无效选项，请输入 0-5 的数字")
 if __name__ == "__main__":
     main()
