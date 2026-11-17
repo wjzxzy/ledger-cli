@@ -11,9 +11,16 @@ def get_one(index:int):
     records=load_data()
     if index < 0 or index >= len(records):
         raise HTTPException(status_code=404, detail=f"没有第 {index} 条记录")
+    return records[index]
+
+@app.delete("/records/{index}", status_code=204)
+def delete_one(index: int):
+    records = load_data()
+    if index < 0 or index >= len(records):
+        raise HTTPException(status_code=404, detail=f"没有第 {index} 条记录")
     records.pop(index)
     save_data(records)
-    return None
+    return None                  # 204 不返回 body
 
 @app.get('/records')
 def list_records():
