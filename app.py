@@ -1,10 +1,19 @@
-from fastapi import FastAPI
+from fastapi import FastAPI,HTTPException
 from storage import load_data,save_data
 from pydantic import BaseModel 
 app=FastAPI()
 @app.get("/")
 def read_root():
     return {"message": "记账本服务已启动"}
+
+@app.get("/record/{index}")
+def get_one(index:int):
+    records=load_data()
+    if index < 0 or index >= len(records):
+        raise HTTPException(status_code=404, detail=f"没有第 {index} 条记录")
+    records.pop(index)
+    save_data(records)
+    return None
 
 @app.get('/records')
 def list_records():
