@@ -13,7 +13,7 @@ def get_one(index:int):
         raise HTTPException(status_code=404, detail=f"没有第 {index} 条记录")
     return records[index]
 
-@app.delete("/records/{index}", status_code=204)
+@app.delete("/record/{index}", status_code=204)
 def delete_one(index: int):
     records = load_data()
     if index < 0 or index >= len(records):
