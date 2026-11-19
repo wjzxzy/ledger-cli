@@ -14,7 +14,16 @@ venv/
 .pytest_cache/
 pytest-of-*/
 .pytest-of-*/
+pytest-cache-files-*/
 
 # 运行时数据：账本是用户数据，不应该进仓库
 # 别人 clone 下来运行，程序会自动创建一个空账本
 data.json
+data.json.bak
+
+# 数据库文件：同样是用户数据，而且是二进制，绝不能进仓库
+# 别人 clone 后运行 db.init_db() 会自动建一个空库
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

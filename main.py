@@ -22,7 +22,8 @@
 
 想对照"拆分前长什么样"：看同目录的 main_v1_single.py。
 """
-
+import db
+import report
 from inputs import ask_amount, ask_category, ask_date
 from report import show_all, show_stats
 from storage import load_data, save_data
@@ -30,69 +31,46 @@ from storage import load_data, save_data
 # ============================================================
 # 第一部分：业务组装
 # ============================================================
-
-def add_record(records):
-    """添加一笔。
-
-    注意：这个函数里没有一句 input()，全交给 inputs.py 的 ask_ 函数。
-    这叫"职责分离"—— 它只关心"问到了什么"，不关心"怎么问"。
-    """
+db.init_db()          # 确保表存在
+def add_record():
     print("\n--- 添加一笔 ---")
     d = ask_date()
     amount = ask_amount()
     category = ask_category()
     note = input("备注（可留空）：").strip()
 
-    record = {
-        "date": d,
-        "amount": amount,
-        "category": category,
-        "note": note,
-    }
-    records.append(record)
+    new_id = db.add_record(d, amount, category, note)
+    print(f"[已记录] id={new_id}  {d}  {category}  {amount:.2f} 元")
 
-    save_data(records)      # 立刻存盘，不等退出
-    print(f"[已记录] {d}  {category}  {amount:.2f} 元")
-def delete_last(records):
-    """删除最后一笔"""
+def show_all():
+    report.show_all(db.list_records())
+
+def delete_last():
     print("\n--- 删除最后一笔 ---")
-
-    if not records:                          # 空账本不能删
-        print("（账本是空的，没有可删除的记录）")
+    records = db.list_records()
+    if not records:
+        print("（账本是空的）")
         return
 
-    last = records[-1]                       # 取最后一条给它看
-    print(f"最后一条：{last['date']}  {last['category']}  "
-          f"{last['amount']:.2f} 元  {last['note']}")
-
-    confirm = input("确认删除？(y/n)：").strip().lower()
-    if confirm != "y":
+    last = records[-1]
+    print(f"最后一条：{last['date']}  {last['category']}  {last['amount']:.2f} 元")
+    if input("确认删除？(y/n)：").strip().lower() != "y":
         print("已取消")
         return
 
-    records.pop()                            # 删最后一个
-    save_data(records)                       # 立刻存盘
+    db.delete_record(last["id"])        # ← 用 id 删，不是 pop
     print("[已删除]")
 
-def show_by_category(records):
-    """按类别筛选查看"""
-    print("\n--- 按类别筛选 ---")
-    if not records:
+def show_by_category():
+    if not db.list_records():
         print("（还没有任何记录）")
         return
-
-    category = ask_category()          # ← 复用 inputs.py 里现成的
-
-    filtered = []                      # 造一个新列表，不动原数据
-    for r in records:
-        if r["category"] == category:
-            filtered.append(r)
-
-    if not filtered:
+    category = ask_category()
+    rows = db.list_records(category)     # ← 用 SQL 的 WHERE，不是 Python 的 for-if
+    if not rows:
         print(f"（没有「{category}」类别的记录）")
         return
-
-    show_all(filtered)                 # ← 复用 report.py 里现成的
+    report.show_all(rows)
 
 # ============================================================
 # 第二部分：菜单与主循环
@@ -110,24 +88,22 @@ MENU = """
 
 
 def main():
-    # 启动时读一次，整个程序都在内存里的 records 上操作
-    records = load_data()
-    print(f"已加载 {len(records)} 条记录")
-
+    db.init_db()
+    print(f"已加载 {len(db.list_records())} 条记录")
     while True:
         print(MENU)
         choice = input("请选择：").strip()
 
         if choice == "1":
-            add_record(records)
+            add_record()
         elif choice == "2":
-            show_all(records)
+            show_all()
         elif choice == "3":
-            show_stats(records)
+            show_stats()
         elif choice == "4":
-            delete_last(records)
+            delete_last()
         elif choice == "5":
-            show_by_category(records)
+            show_by_category()
         elif choice == "0":
             print("再见！")
             break

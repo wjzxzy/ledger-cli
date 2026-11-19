@@ -1,44 +1,40 @@
-from fastapi import FastAPI,HTTPException
-from storage import load_data,save_data
-from pydantic import BaseModel 
+from fastapi import FastAPI, HTTPException
+import db                                  
+from pydantic import BaseModel
 app=FastAPI()
+db.init_db()
 @app.get("/")
 def read_root():
     return {"message": "记账本服务已启动"}
 
-@app.get("/record/{index}")
-def get_one(index:int):
-    record=load_data()
-    if index < 0 or index >= len(record):
-        raise HTTPException(status_code=404, detail=f"没有第 {index} 条记录")
-    return record[index]
-
-@app.delete("/record/{index}", status_code=204)
-def delete_one(index: int):
-    record = load_data()
-    if index < 0 or index >= len(record):
-        raise HTTPException(status_code=404, detail=f"没有第 {index} 条记录")
-    record.pop(index)
-    save_data(record)
-    return None                  # 204 不返回 body
-
-@app.get('/record')
-def list_record():
-    return load_data()
+@app.get("/records")
+def list_records(category: str | None = None):     # ← 顺便加个筛选参数
+    return db.list_records(category)
 
 
+@app.get("/records/{record_id}")
+def get_one(record_id: int):
+    record = db.get_record(record_id)                   # ← index 现在指的是 id，不是下标
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"没有 id={record_id} 的记录")
+    return record
 
-class RecordIn(BaseModel):           # ← 定义"body 必须长什么样"
+
+class RecordIn(BaseModel):
     date: str
     amount: float
     category: str
-    note: str = ""                   # 有默认值 → 可以不传
+    note: str = ""
 
 
-@app.post("/record", status_code=201)      # 201 = 已创建
+@app.post("/records", status_code=201)
 def add_record(record: RecordIn):
-    records = load_data()                   # ← 局部变量叫 records，别叫 record，否则覆盖上面的参数
-    new = record.model_dump()               # Pydantic 模型 → dict
-    records.append(new)
-    save_data(records)
-    return new                              # 返回刚创建的那一条
+    new_id = db.add_record(record.date, record.amount, record.category, record.note)
+    return {"id": new_id, **record.model_dump()}    # ← 返回带 id 的完整记录
+
+
+@app.delete("/records/{index}", status_code=204)
+def delete_one(index: int):
+    if not db.delete_record(index):
+        raise HTTPException(status_code=404, detail=f"没有 id={index} 的记录")
+    return None
