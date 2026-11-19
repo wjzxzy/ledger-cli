@@ -33,7 +33,7 @@ def get_one(record_id: int):
 # ---------- 修改（PUT 全量替换）----------
 
 @app.put("/records/{record_id}")
-def update_one(record_id: int, record):
+def update_one(record_id: int, record: RecordIn):
     ok = db.update_record(
         record_id, record.date, record.amount, record.category, record.note
     )
@@ -43,15 +43,15 @@ def update_one(record_id: int, record):
 
 
 @app.post("/records", status_code=201)
-def add_record(record):
+def add_record(record: RecordIn):
     new_id = db.add_record(record.date, record.amount, record.category, record.note)
     return {"id": new_id, **record.model_dump()}    # ← 返回带 id 的完整记录
 
 
-@app.delete("/records/{index}", status_code=204)
-def delete_one(index: int):
-    if not db.delete_record(index):
-        raise HTTPException(status_code=404, detail=f"没有 id={index} 的记录")
+@app.delete("/records/{record_id}", status_code=204)
+def delete_one(record_id: int):
+    if not db.delete_record(record_id):
+        raise HTTPException(status_code=404, detail=f"没有 id={record_id} 的记录")
     return None
 
 
