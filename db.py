@@ -72,3 +72,45 @@ def stats():
     """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def update_record(record_id, date, amount, category, note=""):
+    """全量更新（PUT 语义）。返回是否更新成功。"""
+    conn = get_conn()
+    cur = conn.execute(
+        "UPDATE records SET date = ?, amount = ?, category = ?, note = ? WHERE id = ?",
+        (date, amount, category, note, record_id),
+    )
+    updated = cur.rowcount > 0          # 0 行被改 = 这个 id 不存在
+    conn.commit()
+    conn.close()
+    return updated
+
+def summary():
+    """统计：总笔数、总金额、按类别分组"""
+    conn = get_conn()
+
+    total = conn.execute(
+        "SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS amount FROM records"
+    ).fetchone()
+
+    by_category = conn.execute("""
+        SELECT category, COUNT(*) AS cnt, SUM(amount) AS amount
+        FROM records
+        GROUP BY category
+        ORDER BY amount DESC
+    """).fetchall()
+
+    conn.close()
+    return {
+        "total_count": total["cnt"],
+        "total_amount": total["amount"],
+        "by_category": [dict(r) for r in by_category],
+    }
+
+def clear_all():
+    """清空所有记录并重置自增 id。⚠️ 只用于开发/演示环境！"""
+    conn = get_conn()
+    conn.execute("DELETE FROM records")
+    conn.execute("DELETE FROM sqlite_sequence WHERE name = 'records'")
+    conn.commit()
+    conn.close()

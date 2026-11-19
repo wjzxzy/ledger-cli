@@ -22,11 +22,10 @@
 
 想对照"拆分前长什么样"：看同目录的 main_v1_single.py。
 """
-import db
 import report
+import db
 from inputs import ask_amount, ask_category, ask_date
-from report import show_all, show_stats
-from storage import load_data, save_data
+
 
 # ============================================================
 # 第一部分：业务组装
@@ -44,6 +43,15 @@ def add_record():
 
 def show_all():
     report.show_all(db.list_records())
+
+
+def show_stats():
+    # report.show_stats(records) 需要参数，所以这里必须先取数据再传进去
+    report.show_stats(db.list_records())
+
+
+def show_stats():
+    report.show_stats(db.list_records())
 
 def delete_last():
     print("\n--- 删除最后一笔 ---")

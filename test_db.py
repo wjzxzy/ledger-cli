@@ -1,5 +1,3 @@
-
-from storage import load_data, save_data
 import db
 import pytest
 @pytest.fixture
@@ -14,6 +12,7 @@ def test_add_and_list(temp_db):
     rows = temp_db.list_records()
     assert len(rows) == 1
     assert rows[0]["amount"] == 25.5
+
 
 
 def test_filter_by_category(temp_db):
@@ -52,3 +51,33 @@ def test_stats(temp_db):
 
 def test_empty_db_returns_empty_list(temp_db):
     assert temp_db.list_records() == []
+
+def test_update_record(temp_db):
+    new_id = temp_db.add_record("2026-11-20", 10.0, "交通", "地铁")
+    assert temp_db.update_record(new_id, "2026-11-20", 20.0, "餐饮", "午饭") is True
+
+    updated = temp_db.get_record(new_id)
+    assert updated["amount"] == 20.0
+    assert updated["category"] == "餐饮"
+
+
+def test_update_missing_returns_false(temp_db):
+    assert temp_db.update_record(999, "2026-11-20", 1.0, "餐饮") is False
+
+
+def test_summary(temp_db):
+    temp_db.add_record("2026-11-20", 25.5, "餐饮")
+    temp_db.add_record("2026-11-20", 30.0, "餐饮")
+    temp_db.add_record("2026-11-20", 100.0, "购物")
+
+    s = temp_db.summary()
+    assert s["total_count"] == 3
+    assert s["total_amount"] == 155.5
+    assert s["by_category"][0]["category"] == "购物"     # 按金额降序
+
+
+def test_summary_empty_db(temp_db):
+    """空表时 SUM 返回 NULL，COALESCE 应该把它变成 0"""
+    s = temp_db.summary()
+    assert s["total_count"] == 0
+    assert s["total_amount"] == 0        # ← 不能是 None
