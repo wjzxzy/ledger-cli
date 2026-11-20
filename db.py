@@ -1,5 +1,9 @@
+import os
 import sqlite3
-DB_PATH = "ledger.db"
+
+# 数据库路径：环境变量优先（云端/Docker 用），默认还是当前目录的 ledger.db
+DB_PATH = os.environ.get("DB_PATH", "ledger.db")
+
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row      # 让查询结果能按字段名取值

@@ -1,5 +1,7 @@
 import db
 import pytest
+from fastapi.testclient import TestClient
+
 @pytest.fixture
 def temp_db(tmp_path, monkeypatch):
     """每个测试用一个独立的临时数据库，绝不碰真实 ledger.db"""
@@ -81,3 +83,36 @@ def test_summary_empty_db(temp_db):
     s = temp_db.summary()
     assert s["total_count"] == 0
     assert s["total_amount"] == 0        # ← 不能是 None
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+    db.init_db()
+    import app
+    return TestClient(app.app)
+
+
+def test_create_returns_201(client):
+    r = client.post("/records", json={"date": "2026-11-20", "amount": 10.0, "category": "餐饮"})
+    assert r.status_code == 201
+    assert "id" in r.json()
+
+
+def test_create_missing_field_returns_422(client):
+    r = client.post("/records", json={"date": "2026-11-20", "category": "餐饮"})
+    assert r.status_code == 422
+    assert r.json()["detail"][0]["loc"] == ["body", "amount"]    # ← 钉死参数来源
+
+
+def test_put_updates(client):
+    r = client.post("/records", json={"date": "2026-11-20", "amount": 10.0, "category": "餐饮"})
+    rid = r.json()["id"]
+    r = client.put(f"/records/{rid}", json={"date": "2026-11-20", "amount": 20.0,
+                                            "category": "餐饮", "note": ""})
+    assert r.status_code == 200
+    assert client.get(f"/records/{rid}").json()["amount"] == 20.0
+
+
+def test_stats_route_not_shadowed(client):
+    """/records/stats 不能被 /records/{record_id} 抢走"""
+    assert client.get("/records/stats").status_code == 200
