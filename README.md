@@ -1,239 +1,405 @@
-## 🔗 在线演示
+# 记账服务 Ledger API
 
+一个用 **Python + FastAPI + SQLite** 写的记账服务：命令行能用，HTTP API 能用，已部署在公网。
 
-- **API 文档**：http://47.94.199.221/docs
-- 架构：Nginx 反向代理（80）→ uvicorn（127.0.0.1:8000）→ SQLite
-- 部署环境：阿里云轻量应用服务器（Ubuntu 24.04）+ systemd 常驻
-- 免费/低成本实例，如遇无法访问请稍后重试
+**在线演示** → **http://47.94.199.221/docs**
+
+> 打开就是 Swagger UI，可以直接点 "Try it out" 调每一个接口。
+
+---
+
+## 目录
+
+- [功能](#功能)
+- [架构](#架构)
+- [接口](#接口)
+- [技术栈](#技术栈)
+- [快速开始](#快速开始)
+- [测试](#测试)
+- [部署](#部署)
+- [项目结构](#项目结构)
+- [设计取舍](#设计取舍)
+- [已知局限](#已知局限)
+- [演进过程](#演进过程)
+
+---
+
+## 功能
+
+**HTTP API（7 个接口）**
+
+- 新增 / 查询 / 修改 / 删除一笔支出
+- 按类别筛选
+- 统计：总笔数、总金额、按类别分组并按金额降序
+
+**命令行（保留）**
+
+- 菜单式增删查改 + 统计表格
+- 与 API **共用同一个数据访问层**，数据源一致
+
+---
+
+## 架构
+
+```
+客户端（浏览器 / curl / 后续的 Agent）
+   │  HTTP :80
+   ▼
+Nginx  反向代理
+   │  proxy_pass → 127.0.0.1:8000
+   ▼
+uvicorn + FastAPI（7 个路由）
+   │
+   ▼
+db.py   数据访问层
+   │  sqlite3 参数化查询
+   ▼
+ledger.db   SQLite（自增主键 + 类别索引）
+```
+
+**关键设计：uvicorn 只监听 `127.0.0.1`，不直接暴露公网。** 唯一入口是 Nginx 的 80 端口，这样后端可以安全地假定"请求都来自可信代理"。
+
+同一份 `db.py` 被 API 和 CLI 同时复用：
+
+```
+app.py ──┐
+         ├──→ db.py ──→ ledger.db
+main.py ─┘
+```
+
+---
+
+## 接口
+
+| 方法 | 路径 | 说明 | 成功状态码 |
+|---|---|---|---|
+| `GET` | `/` | 健康检查 | 200 |
+| `GET` | `/records` | 查询全部，支持 `?category=餐饮` 筛选 | 200 |
+| `GET` | `/records/stats` | 统计（总数 / 总额 / 按类别分组） | 200 |
+| `GET` | `/records/{record_id}` | 查询单条，不存在返回 **404** | 200 |
+| `POST` | `/records` | 新增一笔 | **201** |
+| `PUT` | `/records/{record_id}` | 全量修改，不存在返回 **404** | 200 |
+| `DELETE` | `/records/{record_id}` | 删除，不存在返回 **404** | **204** |
+
+**请求体示例**
+
+```json
+{
+  "date": "2026-11-22",
+  "amount": 25.5,
+  "category": "餐饮",
+  "note": "午饭"
+}
+```
+
+字段校验由 Pydantic 负责，缺字段返回 **422**：
+
+```json
+{"detail":[{"type":"missing","loc":["body","amount"],"msg":"Field required"}]}
+```
+
+**统计响应示例**
+
+```json
+{
+  "total_count": 23,
+  "total_amount": 1662.5,
+  "by_category": [
+    {"category": "购物", "cnt": 4, "amount": 844.0},
+    {"category": "餐饮", "cnt": 8, "amount": 420.5},
+    {"category": "娱乐", "cnt": 3, "amount": 233.0}
+  ]
+}
+```
+
+---
 
 ## 技术栈
 
-Python 3.12 · FastAPI · SQLite · pytest（26 个测试）
-# 命令行记账本
+| 层 | 选型 |
+|---|---|
+| Web 框架 | FastAPI（自动生成 OpenAPI 3.1 文档） |
+| 数据校验 | Pydantic v2 |
+| 数据库 | SQLite（标准库 `sqlite3`，参数化查询） |
+| ASGI 服务器 | uvicorn |
+| 反向代理 | Nginx |
+| 进程管理 | systemd |
+| 容器化 | Docker |
+| 测试 | pytest（26 个测试） |
+| 运行环境 | Python 3.12 / Ubuntu 24.04 |
 
-用 Python 标准库写的命令行记账工具：记录支出、查看明细、按类别统计占比。数据存本地 JSON，无需数据库、无需第三方库。
+---
 
-这是一个**重构练习项目**：v1 是 233 行单文件，v2 拆成 5 个模块。两个版本都保留，可以对照阅读。
+## 快速开始
 
-运行效果：
+### 本地运行
 
+```bash
+git clone https://github.com/wjzxzy/ledger-cli.git
+cd ledger-cli
+
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+
+pip install -r requirements.txt
 ```
-========== 记账本 ==========
-  1. 添加一笔
-  2. 查看全部
-  3. 查看统计
-  0. 退出
-==========================
 
---- 统计 ---
-总支出：157.50 元
+**启动 API：**
 
-类别          金额     占比
-------------------------------
-购物        128.00   81.3%
-餐饮         25.50   16.2%
-交通          4.00    2.5%
+```bash
+uvicorn app:app --reload
 ```
 
-## 怎么运行
+打开 **http://127.0.0.1:8000/docs**
 
-```powershell
-cd C:\Users\ASUS\Desktop\工作2\命令行记账本 v1
+**启动命令行版：**
+
+```bash
 python main.py
 ```
 
-第一次运行会看到「已加载 0 条记录」，添加一笔后会自动生成 `data.json`。
+**灌一批演示数据（可选）：**
 
-在别的目录下运行也可以，`data.json` 会固定生成在这个文件夹里：
-
-```powershell
-python "C:\Users\ASUS\Desktop\工作2\命令行记账本 v1\main.py"
+```bash
+python seed.py --reset
 ```
 
-不需要装任何第三方库，只用 Python 标准库（`json` / `datetime` / `pathlib`）。
+### 只想用命令行跑（不装依赖也行）
+
+核心逻辑只用标准库，`main.py` 不需要 FastAPI：
+
+```bash
+python main.py
+```
 
 ---
 
-## 文件
+## 测试
 
-| 文件 | 说明 |
-|---|---|
-| `main.py` | **入口**：`add_record()` + 菜单 + 主循环。`python main.py` 跑的就是它 |
-| `config.py` | 常量：`DATA_FILE` 路径、`CATEGORIES` 类别列表 |
-| `storage.py` | 数据读写：`load_data()` / `save_data()`，只和 `data.json` 打交道 |
-| `inputs.py` | 输入校验：`ask_amount()` / `ask_category()` / `ask_date()` |
-| `report.py` | 展示层：`show_all()` / `show_stats()`，只打印，不改数据 |
-| `main_v1_single.py` | **拆分前的原始单文件**（233 行），一个字没改，留着对照和复习 |
-| `data.json` | 运行时自动生成，你的数据 |
-
-## 模块之间怎么连的
-
-```
-main.py ──┬─→ config.py          拿 DATA_FILE、CATEGORIES
-          ├─→ storage.py ───────→ config.py
-          ├─→ inputs.py ────────→ config.py（拿 CATEGORIES）
-          └─→ report.py
+```bash
+pytest -v
 ```
 
-三条规矩，这就是拆文件的意义：
+```
+test_db.py  11 passed   数据层：增删改查、筛选、统计、ID 不复用、空库
+test_api.py 15 passed   接口层：状态码、404/422、PUT 全量替换、路由顺序
+```
 
-- `storage.py` / `inputs.py` / `report.py` **谁都不 import `main.py`** → 单独测一个文件不用拉起整个程序
-- 想改类别、加类别 → 只改 `config.py`
-- 想改打印格式 → 只改 `report.py`
-- 想换存储方式（CSV / SQLite）→ 只改 `storage.py`，其他文件一行不动
+**两层的分工：**
 
-一句话：**改一个地方，不用在 233 行里翻。**
+- `test_db.py` 直接用 `monkeypatch` 把 `DB_PATH` 指到临时文件，测 SQL 逻辑
+- `test_api.py` 用 `TestClient` 不起服务就调接口，**专门钉住契约**（比如"422 的 `loc` 必须是 `["body", ...]` 而不是 `["query", ...]`"）
+
+> 为什么两层都要：数据层测试测不到"参数从哪来"。曾经因为函数签名漏了 `: RecordIn` 类型注解，`POST` 从 201 变成 422，而 `test_db.py` 全绿——只有接口层测试能抓到。
 
 ---
 
-## 怎么读这份代码（重要）
+## 部署
 
-**不要从第 1 行读到最后 1 行。** 按下面顺序读，每读完一块，回去看菜单里对应的功能。
+当前部署：阿里云轻量应用服务器（Ubuntu 24.04）+ Nginx + systemd，无 HTTPS（需要域名备案）。
 
-> 下面的行号都指 `main_v1_single.py`（拆分前的原始单文件）。它是完整的一整块，最适合按顺序读。
-> 读完再对照拆分版，就知道每一块该住在哪个文件里：
-> `main()` / `add_record()` → `main.py`；`ask_*` → `inputs.py`；`show_*` → `report.py`；`load_data` / `save_data` → `storage.py`；常量 → `config.py`。
+### systemd
 
-### 第 1 步：读 `main()`（第 210–233 行）
+```ini
+[Unit]
+Description=Ledger API
+After=network.target
 
-先看程序怎么转起来的。你会发现它只有 6 个分支，每个分支调一个函数。
+[Service]
+User=root
+WorkingDirectory=/opt/ledger-cli
+ExecStart=/opt/ledger-cli/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
 
-**这一块要理解的事**：
-- `records = load_data()` 为什么写在 `while True` **外面**？
-  → 因为只在启动时读一次，之后都在内存里操作
-- 为什么 `0` 是 `break`，其他是 `continue` 式的分支？
+[Install]
+WantedBy=multi-user.target
+```
 
-### 第 2 步：读 `add_record()`（第 119–137 行）
+```bash
+systemctl daemon-reload && systemctl enable --now ledger
+```
 
-最短的一个功能函数，把三个 `ask_` 函数串起来。
+### Nginx
 
-**要理解**：它自己没有一句 `input()`，全交给 `ask_` 函数。这叫"职责分离"。
+```nginx
+server {
+    listen 80;
+    server_name _;
 
-### 第 3 步：读三个 `ask_` 函数（第 67–112 行）
+    location / {
+        proxy_pass http://127.0.0.1:8000;
 
-三个函数是同一个套路：
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+nginx -t && systemctl reload nginx
+```
+
+**四个 `proxy_set_header` 不能省**：不传 `X-Real-IP`，后端日志里所有请求都来自 `127.0.0.1`，出问题无法定位真实客户端。
+
+### Docker
+
+```bash
+docker build -t ledger-api .
+docker run -d --name ledger \
+  -p 8001:8000 \
+  -e DB_PATH=/app/data/ledger.db \
+  -v /opt/ledger-cli/data:/app/data \
+  ledger-api
+```
+
+**为什么用卷挂载**：容器应保持无状态，数据通过 volume 落在宿主机，容器可以随时删除重建。`DB_PATH` 通过环境变量注入，代码里不写死路径。
+
+### 备份
+
+```bash
+# 用 SQLite 的 backup API，不能直接 cp（正在写入时拷到的可能是损坏副本）
+python3 -c "import sqlite3; s=sqlite3.connect('/opt/ledger-cli/ledger.db'); d=sqlite3.connect('/opt/backup/ledger-$(date +%F).db'); s.backup(d)"
+```
+
+配合 cron 每天执行，保留最近 7 份，并做过**恢复演练**（恢复出的条数与总额和线上一致）。
+
+---
+
+## 项目结构
+
+```
+ledger/
+├── app.py            FastAPI 服务（7 个路由）
+├── db.py             数据访问层（SQLite，唯一的 SQL 所在地）
+├── config.py         常量与路径
+│
+├── main.py           命令行入口
+├── inputs.py         命令行输入校验
+├── report.py         命令行表格与统计（零依赖）
+│
+├── migrate.py        JSON → SQLite 的一次性迁移脚本
+├── seed.py           演示数据生成
+│
+├── test_db.py        数据层测试（11 个）
+├── test_api.py       接口层测试（15 个）
+│
+├── requirements.txt
+├── Dockerfile
+├── .dockerignore
+├── 代码详解.md        8 层代码通读材料
+└── README.md
+```
+
+**依赖方向严格单向：**
+
+```
+app.py / main.py  →  db.py
+main.py           →  inputs.py / report.py
+                        ↓
+                   config.py
+```
+
+没有循环依赖，`db.py` 不知道 api 的存在，`report.py` 不知道数据库的存在。
+
+---
+
+## 设计取舍
+
+这几条是面试最常被问到的，每条都能对应到具体代码。
+
+### 1. GET 绝不修改数据
+
+HTTP 规定 GET 是**安全方法**，浏览器预加载、爬虫、CDN 都会随意 GET。最初的删除接口把 `records.pop()` 写进了 GET 里，这是事故隐患，后来拆成独立的 `DELETE`，返回 204。
+
+### 2. PUT 是全量替换，不是部分更新
+
+`RecordIn` 里除 `note` 外所有字段都必填。客户端要修改就必须传完整对象——这是 PUT 的语义。部分更新应该用 `PATCH`。
+
+### 3. 静态路由必须写在动态路由前面
 
 ```python
-while True:
-    try:
-        x = 转换(input(...))
-    except ValueError:
-        continue        # 格式错 → try 接住
-    if 不合法:
-        continue        # 值域错 → if 判断
-    return x            # 合法 → 返回
+@app.get("/records/stats")        # 必须在前
+@app.get("/records/{record_id}")  # 必须在后
 ```
 
-**这就是你 `guess.py` 里 `get_number()` 的模式，只是多了 `float` 和列表选择。**
+写反了，访问 `/records/stats` 时 `"stats"` 会被当成 id 去转 int，返回 422。FastAPI 按声明顺序匹配路由。
 
-### 第 4 步：读 `show_all()`（第 139–157 行）
-
-**要理解的三处**：
-- `if not records: return` —— 空列表提前返回，避免后面报错
-- `{r['date']:<12}` —— 左对齐占 12 格；`{r['amount']:>10.2f}` —— 右对齐占 10 格保留 2 位小数
-- `total += r["amount"]` —— 边打印边累加，一次遍历干两件事
-
-### 第 5 步：读 `show_stats()`（第 159–194 行）
-
-**这一块最有价值，是 `wordcount.py` 的进阶版**：
+### 4. 类型注解是接口契约，不是注释
 
 ```python
-by_category = {}
-for r in records:
-    c = r["category"]
-    if c in by_category:
-        by_category[c] += r["amount"]     # 已有 → 累加
-    else:
-        by_category[c] = r["amount"]      # 没有 → 建键
+def add_record(record: RecordIn):    # ✅ 从请求体取
+def add_record(record):              # ❌ 变成必填的 query 参数
 ```
 
-然后是排序：
+少了注解，FastAPI 会把 `record` 当成 URL 查询参数，请求体完全失效。判断依据是 422 响应里的 `loc` 字段：`["body", ...]` 才对，`["query", ...]` 说明注解丢了。
+
+### 5. 空表的 SUM 必须用 COALESCE
+
+```sql
+SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM records
+```
+
+`SUM()` 在空表上返回 `NULL`，直接序列化给前端是 `null`，一参与运算就崩。所有聚合查询都要考虑"表是空的"。
+
+### 6. 用 rowcount 判断"改没改到"
 
 ```python
-items = list(by_category.items())          # [('餐饮', 25.5), ('交通', 4.0)]
-items.sort(key=lambda kv: kv[1], reverse=True)
+cur = conn.execute("UPDATE records SET ... WHERE id = ?", (...))
+return cur.rowcount > 0
 ```
 
-`lambda kv: kv[1]` 的意思是"**用每对的第 2 个元素来排序**"。
-`kv` 是任意起的名字，代表一个元组，`kv[0]` 是类别名，`kv[1]` 是金额。
+`UPDATE` / `DELETE` 对不存在的 id 不报错，只是影响 0 行。必须靠 `rowcount` 才能返回正确的 404。
 
-### 第 6 步：最后读 `load_data()` / `save_data()`（第 30–56 行）
-
-**两个参数的作用（必须记住）**：
+### 7. 金额用 float 是已知缺陷
 
 ```python
-json.dump(records, f, ensure_ascii=False, indent=2)
-#                     ↑ 中文正常显示    ↑ 有缩进，人能看懂
-
-json.load(f)   # 读回来就是 list/dict，不用自己解析
+0.1 + 0.2 == 0.30000000000000004   # True
 ```
+
+账本场景正确做法是用 `Decimal`，或者**以"分"为单位存整数**。当前版本为了教学简化用了 `float`，这是明确的技术债。
+
+### 8. 为什么 SQLite 而不是 PostgreSQL
+
+单机、单用户、写入量极小，SQLite 完全够用且零运维。**如果哪天要支持多实例部署，就必须换 PostgreSQL**——SQLite 的写锁是库级的，多进程并发写会锁竞争。
 
 ---
 
-## 5 个关键设计决策（面试能讲的）
+## 已知局限
 
-| 决策 | 为什么 |
-|---|---|
-| **用 JSON 不用 CSV** | 备注里可能有逗号；JSON 原生支持嵌套结构；**接口返回的就是 JSON** |
-| **列表套字典** | 一条记录 = 一个 dict；整个账本 = list。这个结构以后每天都在用 |
-| **每次改动立刻存盘** | 程序崩溃也不丢数据。代价是多写几次文件，但账本数据量小，无所谓 |
-| **输入校验单独成函数** | `add_record` 不用关心"怎么问"，只关心"问到了什么" |
-| **`if not records: return`** | 防御性编程：空数据不进入后续逻辑 |
+| 局限 | 影响 | 后续方案 |
+|---|---|---|
+| **无 HTTPS** | 浏览器提示"不安全" | 需先有域名（国内要备案 2–3 周） |
+| **SQLite 单写者** | 不适合多实例 | 换 PostgreSQL |
+| **金额用 float** | 极端情况精度丢失 | `Decimal` 或存整数分 |
+| **无鉴权** | 任何人可读写 | 加 API Key / JWT |
+| **无分页** | 数据量大时 `/records` 全量返回 | 加 `limit` / `offset` |
+| **单机部署** | 机器挂了服务就停 | 多实例 + 负载均衡 |
+| 中文表格对齐 | CLI 输出略有错位 | 全角字符宽度计算 |
 
----
-
-## 4 个练习（改需求，检验是否真懂）
-
-按难度排，每做完一个就 `git commit` 一次。
-
-### 练习 1：加"删除最后一笔"（简单）
-在菜单加 `4. 删除最后一笔`，删掉后 `save_data()`。
-- 涉及：`records.pop()`、`len(records) == 0` 的判断
-- 拆分后加在哪：菜单分支加 `main.py`，`pop` + 存盘可以写成一个新函数放 `main.py`
-
-### 练习 2：加"按类别筛选"（中等）
-选类别后只显示这个类别的记录和小计。
-- 涉及：列表推导式或 `for` + `if` 过滤
-- 拆分后加在哪：过滤逻辑放 `report.py`，类别选择复用 `inputs.ask_category()`
-
-### 练习 3：加"按月份筛选"（中等）
-输入 `2026-11`，只看这个月的记录。
-- 涉及：`r["date"].startswith("2026-11")`
-
-### 练习 4：加"修改某一笔"（较难）
-显示所有记录的**编号**，输入编号后重新填写金额和备注。
-- 涉及：`enumerate(records, start=1)`、按编号改
+**这些都是明确的技术债，不是没想到。**
 
 ---
 
-## 两个已知局限（还没处理）
+## 演进过程
 
-**1. 中文对齐会差一点**
+这个项目是一步步长出来的，每个阶段解决一个具体问题：
 
-`{name:<8}` 里，Python 把「餐饮」算作 **2 个字符**，但屏幕上占 **4 个字符宽**（中文是全角）。所以表格会略微错位。
+| 阶段 | 做了什么 | 解决的问题 |
+|---|---|---|
+| 1 | 233 行单文件 CLI | 先让它能跑 |
+| 2 | 拆成 5 个模块 | 改一个地方不用翻 233 行 |
+| 3 | JSON → SQLite | 文件读写的并发与查询能力不足 |
+| 4 | 加 HTTP API | CLI 只能在本地用 |
+| 5 | 加测试（26 个） | 重构时无法确认有没有改坏 |
+| 6 | systemd + Nginx + Docker | 让别人也能访问 |
 
-> 真实项目里要么用等宽全角字符对齐函数，要么干脆输出 JSON 给前端排版。**知道有这回事就行。**
-
-**2. 金额用 `float`，有精度问题**
-
-```python
-0.1 + 0.2 == 0.30000000000000004    # True
-```
-
-账本这种场景，正确做法是用 `Decimal` 或者**以"分"为单位存整数**（25.5 元存成 2550）。
-
-> 这道题面试真的会问："为什么金额不能用 float？"答案就是精度丢失。**现在先知道，等做支付类功能时再改。**
-
-> 拆分文件**没有**动这两处逻辑，行为和 v1 完全一致。
+**每一步都是被上一个阶段的问题逼出来的，不是为了用技术而用技术。**
 
 ---
 
-## v2 进度
+## License
 
-- [x] **拆文件**：`config.py`（常量）/ `storage.py`（读写）/ `inputs.py`（输入校验）/ `report.py`（打印统计）/ `main.py`（菜单入口）
-      —— 比原计划多拆了 `config.py` 和 `inputs.py`，因为"常量"和"输入校验"也不该塞在入口文件里
-- [ ] 加上练习 1 和 2 的功能
-- [ ] 加 `pytest` 测试：`tests/test_storage.py`（读写、坏文件）、`tests/test_report.py`（统计、占比）
-      拆分之后这些函数可以直接 import 进来测，不用再模拟整个菜单
-
-> **先让它跑起来，再让它整洁。** 这个顺序不能反。
+MIT
