@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.db
+*.db-journal
+*.db-wal
+.pytest_cache/
+pytest-cache-files-*/
+data.json.bak
+data/
+.git/
