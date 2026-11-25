@@ -125,7 +125,7 @@ main.py ─┘
 | 反向代理 | Nginx |
 | 进程管理 | systemd |
 | 容器化 | Docker |
-| 测试 | pytest（26 个测试） |
+| 测试 | pytest（30 个测试） |
 | 运行环境 | Python 3.12 / Ubuntu 24.04 |
 
 ---
@@ -283,7 +283,7 @@ ledger/
 ├── migrate.py        JSON → SQLite 的一次性迁移脚本
 ├── seed.py           演示数据生成
 │
-├── test_db.py        数据层测试（11 个）
+├── test_db.py        数据层测试（15 个）
 ├── test_api.py       接口层测试（15 个）
 │
 ├── requirements.txt
@@ -393,7 +393,7 @@ return cur.rowcount > 0
 | 2 | 拆成 5 个模块 | 改一个地方不用翻 233 行 |
 | 3 | JSON → SQLite | 文件读写的并发与查询能力不足 |
 | 4 | 加 HTTP API | CLI 只能在本地用 |
-| 5 | 加测试（26 个） | 重构时无法确认有没有改坏 |
+| 5 | 加测试（30 个） | 重构时无法确认有没有改坏 |
 | 6 | systemd + Nginx + Docker | 让别人也能访问 |
 
 **每一步都是被上一个阶段的问题逼出来的，不是为了用技术而用技术。**
